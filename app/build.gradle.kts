@@ -13,7 +13,7 @@ android {
 
     defaultConfig {
         applicationId = "net.harutiro.mattertest"
-        minSdk = 24
+        minSdk = 27
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
@@ -34,6 +34,13 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+
+//    .soを読み込む
+    sourceSets {
+        getByName("main") {
+            jniLibs.directories.add("libs/jniLibs")
+        }
     }
 }
 
@@ -56,4 +63,7 @@ dependencies {
 
     implementation(libs.play.services.base)
     implementation(libs.play.services.home)
+
+//    libsのjarを取得する
+    implementation(fileTree("libs") { include("*.jar") })
 }

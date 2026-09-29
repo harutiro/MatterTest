@@ -156,6 +156,9 @@ fun DeviceRow(device: DeviceEntity) {
     var status by remember { mutableStateOf("未調査") }
     var endpoints by remember { mutableStateOf<List<EndpointInfo>>(emptyList()) }
 
+    val dao = remember { AppDatabase.get(context).deviceDao() }
+    var unpairFailed by remember { mutableStateOf(false) }
+
     Column {
         Text("${device.name}  nodeId=${device.nodeId}")
         Text("状態: $status")
@@ -175,6 +178,30 @@ fun DeviceRow(device: DeviceEntity) {
         }) { Text("調査") }
         endpoints.forEach { info ->
             EndpointRow(nodeId = device.nodeId, info = info)
+        }
+
+        Button(onClick = {
+            scope.launch {
+                status = "削除中…"
+                try {
+                    ChipClient.unpairDevice(context, device.nodeId)     // ① デバイス側
+                    dao.delete(device.nodeId)                           // ② アプリ側
+                    Log.d(TAG, "ファブリックから外して、記録も消しました nodeId=${device.nodeId}")
+                } catch (e: Exception) {
+                    Log.e(TAG, "ファブリックからの削除に失敗 nodeId=${device.nodeId}", e)
+                    status = "削除 失敗（デバイスにつながらない）"
+                    unpairFailed = true
+                }
+            }
+        }) { Text("削除") }
+
+        if (unpairFailed) {
+            Button(onClick = {
+                scope.launch {
+                    dao.delete(device.nodeId)                           // ② だけ
+                    Log.w(TAG, "記録だけ消しました（デバイス側にはファブリックが残っている可能性）nodeId=${device.nodeId}")
+                }
+            }) { Text("記録だけ消す") }
         }
     }
 }

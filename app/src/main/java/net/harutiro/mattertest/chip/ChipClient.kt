@@ -5,6 +5,7 @@ import chip.devicecontroller.ChipDeviceController
 import chip.devicecontroller.CommissionParameters
 import chip.devicecontroller.ControllerParams
 import chip.devicecontroller.GetConnectedDeviceCallbackJni
+import chip.devicecontroller.UnpairDeviceCallback
 import chip.platform.AndroidBleManager
 import chip.platform.AndroidChipPlatform
 import chip.platform.AndroidNfcCommissioningManager
@@ -99,6 +100,20 @@ object ChipClient {
                 }
                 override fun onConnectionFailure(nodeId: Long, error: Exception) {
                     continuation.resumeWithException(error)
+                }
+            })
+        }
+    }
+
+    suspend fun unpairDevice(context: Context, nodeId: Long) {
+        val controller = getDeviceController(context)
+        suspendCancellableCoroutine { continuation ->
+            controller.unpairDeviceCallback(nodeId, object : UnpairDeviceCallback {
+                override fun onSuccess(nodeId: Long) {
+                    continuation.resume(Unit)
+                }
+                override fun onError(errorCode: Int, nodeId: Long) {
+                    continuation.resumeWithException(IllegalStateException("ファブリックからの削除に失敗 errorCode=$errorCode"))
                 }
             })
         }

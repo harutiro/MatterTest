@@ -15,6 +15,7 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,8 +26,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
@@ -36,8 +39,12 @@ import com.google.android.gms.home.matter.commissioning.CommissioningRequest
 import com.google.android.gms.home.matter.commissioning.CommissioningResult
 import kotlinx.coroutines.launch
 import net.harutiro.mattertest.chip.ChipClient
+import net.harutiro.mattertest.chip.DescriptorClient
+import net.harutiro.mattertest.chip.EndpointInfo
+import net.harutiro.mattertest.chip.OnOffClient
 import net.harutiro.mattertest.commissioning.AppCommissioningService
 import net.harutiro.mattertest.data.AppDatabase
+import net.harutiro.mattertest.data.DeviceEntity
 import net.harutiro.mattertest.ui.theme.MatterTestTheme
 
 private const val TAG = "Matter"
@@ -135,9 +142,72 @@ fun MainScreen(
 
         LazyColumn {
             items(devices, key = { it.nodeId }) { device ->
-                Text("${device.name}  nodeId=${device.nodeId}  vendorId=${device.vendorId}")
+                DeviceRow(device)
             }
         }
 
+    }
+}
+
+@Composable
+fun DeviceRow(device: DeviceEntity) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var status by remember { mutableStateOf("未調査") }
+    var endpoints by remember { mutableStateOf<List<EndpointInfo>>(emptyList()) }
+
+    Column {
+        Text("${device.name}  nodeId=${device.nodeId}")
+        Text("状態: $status")
+        Button(onClick = {
+            scope.launch {
+                status = "調査中…"
+                try {
+                    val all = DescriptorClient.discover(context, device.nodeId)
+                    all.forEach { Log.d(TAG, "endpoint=${it.endpoint} label=${it.label} deviceTypes=${it.deviceTypes.map { t -> "0x%04X".format(t) }} clusters=${it.serverClusters.map { c -> "0x%04X".format(c) }}") }
+                    endpoints = all.filter { it.hasOnOff }
+                    status = "OnOff を持つエンドポイント: ${endpoints.map { it.endpoint }}"
+                } catch (e: Exception) {
+                    Log.e(TAG, "調査 失敗 nodeId=${device.nodeId}", e)
+                    status = "調査 失敗"
+                }
+            }
+        }) { Text("調査") }
+        endpoints.forEach { info ->
+            EndpointRow(nodeId = device.nodeId, info = info)
+        }
+    }
+}
+
+@Composable
+fun EndpointRow(nodeId: Long, info: EndpointInfo) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var status by remember { mutableStateOf("未取得") }
+
+    fun run(label: String, block: suspend () -> Unit) {
+        scope.launch {
+            status = "$label 中…"
+            try {
+                block()
+            } catch (e: Exception) {
+                Log.e(TAG, "$label 失敗 nodeId=$nodeId endpoint=${info.endpoint}", e)
+                status = "$label 失敗"
+            }
+        }
+    }
+
+    Column {
+        Text("  endpoint ${info.endpoint}: ${info.label ?: "(名前なし)"}  状態: $status")
+        Row {
+            Button(onClick = { run("On") { OnOffClient.on(context, nodeId, info.endpoint); status = "On" } }) { Text("On") }
+            Button(onClick = { run("Off") { OnOffClient.off(context, nodeId, info.endpoint); status = "Off" } }) { Text("Off") }
+            Button(onClick = { run("Toggle") { OnOffClient.toggle(context, nodeId, info.endpoint); status = "Toggle 済み" } }) { Text("Toggle") }
+            Button(onClick = {
+                run("読み取り") {
+                    status = if (OnOffClient.readOnOff(context, nodeId, info.endpoint)) "On（読み取り）" else "Off（読み取り）"
+                }
+            }) { Text("読む") }
+        }
     }
 }

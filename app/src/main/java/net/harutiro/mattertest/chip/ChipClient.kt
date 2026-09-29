@@ -4,6 +4,7 @@ import android.content.Context
 import chip.devicecontroller.ChipDeviceController
 import chip.devicecontroller.CommissionParameters
 import chip.devicecontroller.ControllerParams
+import chip.devicecontroller.GetConnectedDeviceCallbackJni
 import chip.platform.AndroidBleManager
 import chip.platform.AndroidChipPlatform
 import chip.platform.AndroidNfcCommissioningManager
@@ -85,6 +86,21 @@ object ChipClient {
                 }
             })
             controller.commissionDevice(nodeId, CommissionParameters.Builder().build())
+        }
+    }
+
+    suspend fun getConnectedDevicePointer(context: Context, nodeId: Long): Long {
+        val controller = getDeviceController(context)
+        return suspendCancellableCoroutine { continuation ->
+            controller.getConnectedDevicePointer(nodeId, object :
+                GetConnectedDeviceCallbackJni.GetConnectedDeviceCallback {
+                override fun onDeviceConnected(devicePointer: Long) {
+                    continuation.resume(devicePointer)
+                }
+                override fun onConnectionFailure(nodeId: Long, error: Exception) {
+                    continuation.resumeWithException(error)
+                }
+            })
         }
     }
 }

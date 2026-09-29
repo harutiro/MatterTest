@@ -1,6 +1,9 @@
 package net.harutiro.mattertest
 
+import android.Manifest
 import android.app.Activity
+import android.content.ComponentName
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -20,10 +23,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.home.matter.Matter
 import com.google.android.gms.home.matter.commissioning.CommissioningRequest
 import com.google.android.gms.home.matter.commissioning.CommissioningResult
+import net.harutiro.mattertest.chip.ChipClient
+import net.harutiro.mattertest.commissioning.AppCommissioningService
 import net.harutiro.mattertest.ui.theme.MatterTestTheme
 
 private const val TAG = "Matter"
@@ -31,6 +37,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        val controller = ChipClient.getDeviceController(this)
+        Log.d(TAG, "controllerNodeId=${controller.controllerNodeId} compressedFabricId=${controller.compressedFabricId} fabricIndex=${controller.fabricIndex}")
+
         setContent {
             MatterTestTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -71,23 +81,36 @@ fun MainScreen(
         }
     }
 
+    fun startCommissioning() {
+        val request = CommissioningRequest.builder()
+            .setCommissioningService(ComponentName(context, AppCommissioningService::class.java))
+            .build()
+        Matter.getCommissioningClient(context)
+            .commissionDevice(request)
+            .addOnSuccessListener { intentSender ->
+                commissioningLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+            }
+            .addOnFailureListener { e -> Log.e(TAG, "コミッショニングの開始に失敗", e) }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        Log.d(TAG, "ACCESS_LOCAL_NETWORK granted=$granted")
+        if (granted) startCommissioning()
+    }
+
     Column(
         modifier = Modifier
             .padding(padding)
     ) {
         Button(
             onClick = {
-                val request = CommissioningRequest.builder().build()
-                Matter.getCommissioningClient(context)
-                    .commissionDevice(request)
-                    .addOnSuccessListener { intentSender ->
-                        commissioningLauncher.launch(
-                            IntentSenderRequest.Builder(intentSender).build()
-                        )
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e(TAG, "コミッショニングの開始に失敗", e)
-                    }
+                val granted = ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.ACCESS_LOCAL_NETWORK
+                ) == PackageManager.PERMISSION_GRANTED
+                if (granted) startCommissioning()
+                else permissionLauncher.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
             }
         ) {
             Text("Matter製品のQRの読み込み")

@@ -17,10 +17,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
@@ -28,8 +34,10 @@ import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.home.matter.Matter
 import com.google.android.gms.home.matter.commissioning.CommissioningRequest
 import com.google.android.gms.home.matter.commissioning.CommissioningResult
+import kotlinx.coroutines.launch
 import net.harutiro.mattertest.chip.ChipClient
 import net.harutiro.mattertest.commissioning.AppCommissioningService
+import net.harutiro.mattertest.data.AppDatabase
 import net.harutiro.mattertest.ui.theme.MatterTestTheme
 
 private const val TAG = "Matter"
@@ -61,6 +69,10 @@ fun MainScreen(
     val context = LocalContext.current
     val activity = LocalActivity.current
 
+    val dao = remember { AppDatabase.get(context).deviceDao() }
+    val devices by dao.observeAll().collectAsState(initial = emptyList())
+    val scope = rememberCoroutineScope()
+
     val commissioningLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
@@ -76,6 +88,11 @@ fun MainScreen(
             Log.d(TAG, "deviceName=${commissioningResult.deviceName}")
             Log.d(TAG, "vendorId=${descriptor?.vendorId} productId=${descriptor?.productId} deviceType=${descriptor?.deviceType}")
             Log.d(TAG, "token=${commissioningResult.token} room=${commissioningResult.room?.name}")
+
+            val nodeId = commissioningResult.token?.toLongOrNull()
+            if (nodeId != null) {
+                scope.launch { dao.updateName(nodeId, commissioningResult.deviceName) }
+            }
         } catch (e: ApiException) {
             Log.e(TAG, "結果の取り出しに失敗 statusCode=${e.statusCode}", e)
         }
@@ -114,6 +131,12 @@ fun MainScreen(
             }
         ) {
             Text("Matter製品のQRの読み込み")
+        }
+
+        LazyColumn {
+            items(devices, key = { it.nodeId }) { device ->
+                Text("${device.name}  nodeId=${device.nodeId}  vendorId=${device.vendorId}")
+            }
         }
 
     }

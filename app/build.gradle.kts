@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -63,6 +64,9 @@ dependencies {
 
     implementation(libs.play.services.base)
     implementation(libs.play.services.home)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
 
 //    libsのjarを取得する
     implementation(fileTree("libs") { include("*.jar") })
